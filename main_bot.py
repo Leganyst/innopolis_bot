@@ -24,8 +24,8 @@ WEBHOOK_PATH = '/path/to/api' # указываем путь к API
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}" # формируем полный URL webhook
 
 # настройки веб-сервера
-WEBAPP_HOST = 'localhost'  # или IP-адрес
-WEBAPP_PORT = 3001
+WEBAPP_HOST = 'innopolis_bot.com'  # или IP-адрес
+WEBAPP_PORT = 8443
 
 logging.basicConfig(level=logging.INFO) # устанавливаем уровень журналирования INFO
 
