@@ -18,7 +18,7 @@ async def echo(message: types.Message):
 
 async def on_startup(dp):
     # Устанавливаем вебхук
-    await bot.set_webhook(WEBHOOK_URL, certificate=open(r'etc/ssl/certs/server.crt', 'rb'))
+    await bot.set_webhook(WEBHOOK_URL, certificate=open(r'/etc/ssl/certs/server.crt', 'rb'))
 
 async def on_shutdown(dp):
     # Удаляем вебхук при остановке бота
