@@ -2,7 +2,7 @@ import logging
 from aiogram import Bot, Dispatcher, executor, types
 
 API_TOKEN = '6273983990:AAGNUQpjEen2GKcfJYtcHygvolZkzxg8Fpk' # замените на токен вашего бота
-WEBHOOK_HOST = 'http://185.159.130.232' # адрес вашего сервера
+WEBHOOK_HOST = 'https://185.159.130.232' # адрес вашего сервера
 WEBHOOK_PATH = '/webhook/' # путь для вебхука
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
@@ -18,7 +18,7 @@ async def echo(message: types.Message):
 
 async def on_startup(dp):
     # Устанавливаем вебхук
-    await bot.set_webhook(WEBHOOK_URL, certificate=open(r'/etc/ssl/certs/server.crt', 'rb'))
+    await bot.set_webhook(WEBHOOK_URL, certificate=open(r'/etc/ssl/private/server.key', 'rb'))
 
 async def on_shutdown(dp):
     # Удаляем вебхук при остановке бота
