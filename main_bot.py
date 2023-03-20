@@ -1,69 +1,96 @@
+import asyncio
 import logging
 
-from aiogram import Bot, types
-from aiogram.contrib.middlewares.logging import LoggingMiddleware
-from aiogram.dispatcher import Dispatcher
-from aiogram.dispatcher.webhook import SendMessage
-from aiogram.utils.executor import start_webhook
+from aiogram import Bot, Dispatcher, executor, types
+from aiohttp import web
 
 API_TOKEN = '6273983990:AAGNUQpjEen2GKcfJYtcHygvolZkzxg8Fpk'
 
-# webhook settings
-WEBHOOK_HOST = 'https://185.159.130.232' # ваш IP адрес здесь
-WEBHOOK_PATH = '/path/to/api'
-WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
-
-# webserver settings
-WEBAPP_HOST = 'localhost' # or ip
-WEBAPP_PORT = 3001
-
-logging.basicConfig(level=logging.INFO)
-
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
-dp.middleware.setup(LoggingMiddleware())
-
-
-@dp.message_handler(commands=['start'])
-async def start_command(message: types.Message):
-    await message.answer('Привет, я бот Марка Клавишина и использую ВЕБХУК!')
 
 @dp.message_handler()
 async def echo(message: types.Message):
-    # Regular request
-    await bot.send_message(message.chat.id, message.text)
-
-    # or reply INTO webhook
-    return SendMessage(message.chat.id, message.text)
+    # Просто отправляем обратно то же самое сообщение
+    await message.answer(message.text)
 
 
-async def on_startup(dp):
-    await bot.set_webhook(WEBHOOK_URL)
-    # insert code here to run it after start
+async def init_app():
+    # Создаем web-приложение aiohttp
+    app = web.Application()
+    # Регистрируем обработчик для webhook-запросов от Telegram
+    app.router.add_post('/webhook/{token}', handle_webhook)
+    # Возвращаем созданное приложение
+    return app
+
+async def handle_webhook(request: web.Request):
+    # Получаем токен из URL-параметра (для проверки подлинности запроса)
+    token = request.match_info['token']
+    if token != API_TOKEN:
+        # Если токен не совпадает с нашим - возвращаем ошибку 403 Forbidden
+        return web.Response(status=403)
+
+    # Получаем данные из тела запроса (это JSON-объект Update от Telegram)
+    data = await request.json()
+    
+    # Передаем данные диспетчеру aiogram для обработки обновления 
+    await dp.process_update(data)
+
+    # Возвращаем пустой ответ 200 OK 
+    return web.Response()
+
+async def start_webhook():
+
+    # Получаем текущий цикл событий asyncio 
+    loop = asyncio.get_event_loop()
+    
+    global runner
+    # Создаем объект web-runner для запуска нашего приложения aiohttp 
+    runner = web.AppRunner(await init_app())
 
 
-async def on_shutdown(dp):
-    logging.warning('Shutting down..')
+    # Запускаем runner 
+    await runner.setup()
+    # Создаем объект сайта (site) с указанием IP-адреса и порта для прослушивания 
+    site = web.TCPSite(runner=runner,
+                        host='185.159.130.232',  # IP-адрес сервера
+                        port=8443)  # Порт (должен быть открыт для входящих соединений)
 
-    # insert code here to run it before shutdown
+    # Запускаем сайт 
+    await site.start()
 
-    # Remove webhook (not acceptable in some cases)
-    await bot.delete_webhook()
+    # Формируем URL для webhook-сервера 
+    webhook_url = f'https://{site.host}:{site.port}/webhook/{API_TOKEN}'
 
-    # Close DB connection (if used)
-    await dp.storage.close()
-    await dp.storage.wait_closed()
+    # Устанавливаем webhook для нашего бота 
+    await bot.set_webhook(webhook_url)
 
-    logging.warning('Bye!')
+    # Выводим информацию о запущенном сервере 
+    logging.info(f'Webhook server started at {webhook_url}')
+
+
+async def stop_webhook():
+    
+     # Снимаем webhook с нашего бота 
+     await bot.delete_webhook()
+
+     # Останавливаем runner и освобождаем ресурсы 
+     await runner.cleanup()
+
+     # Выводим информацию об остановленном сервере 
+     logging.info('Webhook server stopped')
+
 
 
 if __name__ == '__main__':
-    start_webhook(
-        dispatcher=dp,
-        webhook_path=WEBHOOK_PATH,
-        on_startup=on_startup,
-        on_shutdown=on_shutdown,
-        skip_updates=True,
-        host=WEBAPP_HOST,
-        port=WEBAPP_PORT,
-    )
+    
+     try:
+         # Запускаем webhook-сервер
+         asyncio.run(start_webhook())
+
+         # Ждем нажатия Ctrl+C
+         asyncio.get_event_loop().run_forever()
+     
+     except KeyboardInterrupt:
+         # Останавливаем webhook-сервер
+         asyncio.run(stop_webhook())
