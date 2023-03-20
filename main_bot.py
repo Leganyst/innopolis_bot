@@ -18,7 +18,7 @@ async def echo(message: types.Message):
 
 async def on_startup(dp):
     # Устанавливаем вебхук
-    await bot.set_webhook(WEBHOOK_URL)
+    await bot.set_webhook(WEBHOOK_URL, certificate=open(r'etc/ssl/certs/server.crt', 'rb'))
 
 async def on_shutdown(dp):
     # Удаляем вебхук при остановке бота
@@ -32,5 +32,5 @@ if __name__ == '__main__':
         on_startup=on_startup,
         on_shutdown=on_shutdown,
         host='0.0.0.0', # слушаем все адреса на сервере
-        port=80 # порт для веб-сервера (можно выбрать любой свободный)
+        port=443 # порт для веб-сервера (можно выбрать любой свободный)
     )
