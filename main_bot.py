@@ -23,10 +23,15 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 dp.middleware.setup(LoggingMiddleware())
 
+
+@dp.message_handler(commands=['start'])
+async def start_command(message: types.Message):
+    await message.answer('Привет, я бот Марка Клавишина и использую ВЕБХУК!')
+
 @dp.message_handler()
 async def echo(message: types.Message):
     # Regular request
-    # await bot.send_message(message.chat.id, message.text)
+    await bot.send_message(message.chat.id, message.text)
 
     # or reply INTO webhook
     return SendMessage(message.chat.id, message.text)
