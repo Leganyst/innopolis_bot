@@ -7,12 +7,13 @@ from aiogram.dispatcher.webhook import SendMessage
 from aiogram.utils.executor import start_webhook
 import telebot # добавил импорт telebot
 
-API_TOKEN = 'BOT_TOKEN_HERE'
+API_TOKEN = '6273983990:AAGNUQpjEen2GKcfJYtcHygvolZkzxg8Fpk'
 
 # webhook settings
 WEBHOOK_HOST = 'https://185.159.130.232' # ваш IP адрес здесь
 WEBHOOK_PATH = '/path/to/api'
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+WEBHOOK_URL_PATH = f"/{API_TOKEN}/" # добавил определение WEBHOOK_URL_PATH
 
 # webserver settings
 WEBAPP_HOST = 'localhost' # or ip
