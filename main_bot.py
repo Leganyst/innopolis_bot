@@ -11,7 +11,7 @@ WEBHOOK_PATH = '/webhook'
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
 # настройки веб-сервера
-WEBAPP_HOST = '0.0.0.0' # или ip
+WEBAPP_HOST = '3.70.135.253' # или ip
 WEBAPP_PORT = 8443
 
 logging.basicConfig(level=logging.INFO)
