@@ -1,15 +1,22 @@
 # Link to the bot: https://t.me/innopolis_testing_bot
+import sys
+import locale
 
 from aiogram import Bot, types
 from aiogram.dispatcher import Dispatcher
 from aiogram.utils import executor
 
+# Импортируем функции из файла с базой данных
+from database import insert_user_db, delete_user_db, update_user_db, get_nickname_db
+
+
 TOKEN = "6273983990:AAGNUQpjEen2GKcfJYtcHygvolZkzxg8Fpk"
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 
-# Импортируем функции из файла с базой данных
-from database import insert_user_db, delete_user_db, update_user_db, get_nickname_db
+sys.setdefaultencoding ('utf8')
+locale.setlocale (locale.LC_ALL, 'en_US.UTF-8')
+
 
 @dp.message_handler(commands=["start"])
 async def send_welcome(msg: types.Message):
