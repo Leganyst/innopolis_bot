@@ -1,4 +1,4 @@
-# https://t.me/innopolis_testing_bot
+# Link to the bot: https://t.me/innopolis_testing_bot
 
 from aiogram import Bot, types
 from aiogram.dispatcher import Dispatcher
