@@ -1,5 +1,8 @@
 import sqlite3
 
+sqlite3.register_adapter(str, lambda s: s.encode('utf-8'))
+sqlite3.register_converter("text", lambda b: b.decode('utf-8'))
+
 # Создаем соединение с базой данных
 conn = sqlite3.connect("users_telegram.db")
 
