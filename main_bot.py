@@ -1,67 +1,91 @@
-import logging
+# 
 
-from aiogram import Bot, Dispatcher, executor, types
-from aiogram.utils.executor import start_webhook
 
-API_TOKEN = '6273983990:AAGNUQpjEen2GKcfJYtcHygvolZkzxg8Fpk'
 
-# настройки вебхука
-WEBHOOK_HOST = 'https://innopolis-bot-meyld.run-eu-central1.goorm.site'
-WEBHOOK_PATH = '/webhook'
-WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
-# настройки веб-сервера
-WEBAPP_HOST = '3.70.135.253' # или ip
-WEBAPP_PORT = 8443
+from aiogram import Bot, types
+from aiogram.dispatcher import Dispatcher
+from aiogram.utils import executor
 
-logging.basicConfig(level=logging.INFO)
-
-bot = Bot(token=API_TOKEN)
+TOKEN = "6273983990:AAGNUQpjEen2GKcfJYtcHygvolZkzxg8Fpk"
+bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 
-@dp.message_handler(commands=['start', 'help'])
-async def send_welcome(message: types.Message):
+# Импортируем функции из файла с базой данных
+from database import insert_user_db, delete_user_db, update_user_db, get_nickname_db
+
+@dp.message_handler(commands=["start"])
+async def send_welcome(msg: types.Message):
+    await msg.reply(f"Я бот. Меня написал Марк Клавишин. Я работаю круглосуточно, так как установлен на VDS хостинге.")
+
+@dp.message_handler(commands=["записать"])
+async def record_user(msg: types.Message):
+    # Получаем id и никнейм пользователя из сообщения
+    user_id = msg.from_user.id
+    nickname = msg.from_user.username
+
+    # Вызываем функцию для записи данных пользователя в таблицу
+    insert_user_db(user_id, nickname)
+
+    # Отправляем сообщение пользователю о результате операции
+    await msg.reply(f"Вы попытались записать свои данные в базу данных.")
+
+@dp.message_handler(commands=["удалить"])
+async def delete_user(msg: types.Message):
+    # Получаем id пользователя из сообщения
+    user_id = msg.from_user.id
+
+    # Вызываем функцию для удаления данных пользователя из таблицы
+    delete_user_db(user_id)
+
+    # Отправляем сообщение пользователю о результате операции
+    await msg.reply(f"Вы попытались удалить свои данные из базы данных.")
+
+@dp.message_handler(commands=["обновить"])
+async def update_user(msg: types.Message):
+    # Получаем id и никнейм пользователя из сообщения
+    user_id = msg.from_user.id
+    new_nickname = msg.from_user.username
+
+    # Вызываем функцию для обновления данных пользователя в таблице
+    update_user_db(user_id, new_nickname)
+
+    # Отправляем сообщение пользователю о результате операции
+    await msg.reply(f"Вы попытались обновить свои данные в базе данных.")
+
+
+# Создаем обработчик команды /получить
+@dp.message_handler(commands=["получить"])
+async def get_user_data(message: types.Message):
+    # Получаем user_id из сообщения
+    user_id = message.from_user.id
+    # Вызываем функцию для получения никнейма из базы данных по user_id
+    nickname = get_nickname_db(user_id)
+    # Если никнейм не None, отправляем никнейм и user_id
+    if nickname:
+        await message.reply(f"Ваш никнейм: {nickname}\nВаш user_id: {user_id}")
+    # Если никнейм None, отправляем сообщение об ошибке
+    else:
+        await message.reply("Вы не зарегистрированы в базе данных")
+
+
+@dp.message_handler(commands=["help"])
+async def send_help(msg: types.Message):
+    # Формируем текст справки по командам бота
+    help_text = """
+    Я бот, который работает с базой данных пользователей Telegram.
+    Вот список команд, которые я понимаю:
+    /start - поздороваться со мной и узнать, кто меня написал
+    /записать - записать свой id и никнейм в базу данных
+    /удалить - удалить свой id и никнейм из базы данных
+    /обновить - обновить свой никнейм в базе данных
+    /help - получить эту справку по командам
+    /получить - получить свои данные
     """
-    Этот обработчик будет вызван, когда пользователь отправит команду `/start` или `/help`
-    """
-    await message.reply("Привет!\nЯ EchoBot!\nРаботаю на aiogram.")
 
-@dp.message_handler()
-async def echo(message: types.Message):
-    # старый способ:
-    # await bot.send_message(message.chat.id, message.text)
-
-    await message.answer(message.text)
-
-async def on_startup(dp):
-    await bot.set_webhook(WEBHOOK_URL)
-    # вставьте здесь код для запуска после старта
-
-async def on_shutdown(dp):
-    logging.warning('Выключение..')
-
-    # вставьте здесь код для запуска перед выключением
-
-    # Удалить вебхук (необязательно)
-    await bot.delete_webhook()
-
-    # Закрыть соединение с БД (если используется)
-    await dp.storage.close()
-    await dp.storage.wait_closed()
-
-    logging.warning('Пока!')
-
-if __name__ == '__main__':
-    start_webhook(
-        dispatcher=dp,
-        webhook_path=WEBHOOK_PATH,
-        on_startup=on_startup,
-        on_shutdown=on_shutdown,
-        skip_updates=True,
-        host=WEBAPP_HOST,
-        port=WEBAPP_PORT,
-    )
+    # Отправляем сообщение пользователю с текстом справки
+    await msg.reply(help_text)
 
 
-
-# У меня имеется следующий код: import logging from aiogram import Bot, Dispatcher, executor, types from aiogram.utils.executor import start_webhook API_TOKEN = '6273983990:AAGNUQpjEen2GKcfJYtcHygvolZkzxg8Fpk' # настройки вебхука WEBHOOK_HOST = 'https://innopolis-bot-meyld.run-eu-central1.goorm.site' WEBHOOK_PATH = '/webhook' WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}" # настройки веб-сервера WEBAPP_HOST = '172.17.0.21' # или ip WEBAPP_PORT = 8443 logging.basicConfig(level=logging.INFO) bot = Bot(token=API_TOKEN) dp = Dispatcher(bot) @dp.message_handler(commands=['start', 'help']) async def send_welcome(message: types.Message): """ Этот обработчик будет вызван, когда пользователь отправит команду `/start` или `/help` """ await message.reply("Привет!\nЯ EchoBot!\nРаботаю на aiogram.") @dp.message_handler() async def echo(message: types.Message): # старый способ: # await bot.send_message(message.chat.id, message.text) await message.answer(message.text) async def on_startup(dp): await bot.set_webhook(WEBHOOK_URL) # вставьте здесь код для запуска после старта async def on_shutdown(dp): logging.warning('Выключение..') # вставьте здесь код для запуска перед выключением # Удалить вебхук (необязательно) await bot.delete_webhook() # Закрыть соединение с БД (если используется) await dp.storage.close() await dp.storage.wait_closed() logging.warning('Пока!') if __name__ == '__main__': start_webhook( dispatcher=dp, webhook_path=WEBHOOK_PATH, on_startup=on_startup, on_shutdown=on_shutdown, skip_updates=True, host=WEBAPP_HOST, port=WEBAPP_PORT, ) Однако при выполнении этого кода на своём VDS сервере я получил ошибку: 
+if __name__ == "__main__":
+    executor.start_polling(dp)
