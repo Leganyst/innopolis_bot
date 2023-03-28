@@ -6,6 +6,8 @@ from aiogram import Bot, types
 from aiogram.dispatcher import Dispatcher
 from aiogram.utils import executor
 
+from aiogram.dispatcher.filters import CommandStart
+
 # Импортируем функции из файла с базой данных
 from database import insert_user_db, delete_user_db, update_user_db, get_nickname_db
 
@@ -87,6 +89,33 @@ async def send_help(msg: types.Message):
     # Отправляем сообщение пользователю с текстом справки
     await msg.reply(help_text)
 
+# инициализация обработчика для эхо сообщения
+@dp.message_handler()
+async def echo_message(message: types.Message):
+    # отправка эхо текста
+    await message.answer(message.text)
 
+
+@dp.message_handler(content_types=["animation", "photo", "video", "document", "sticker"])
+async def echo(message: types.Message):
+    # Получаем тип контента и файл ID
+    content_type = message.content_type
+    file_id = message[content_type].file_id
+    # Используем match case для отправки обратно того же типа контента
+    match content_type:
+        case "animation":
+            await message.reply_animation(file_id)
+        case "photo":
+            await message.reply_photo(file_id)
+        case "video":
+            await message.reply_video(file_id)
+        case "document":
+            await message.reply_document(file_id)
+        case "sticker":
+            await message.reply_sticker(file_id)
+        case _:
+            await message.reply("Неизвестный тип контента")
+
+            
 if __name__ == "__main__":
     executor.start_polling(dp)
