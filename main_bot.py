@@ -101,21 +101,20 @@ async def echo(message: types.Message):
     # Получаем тип контента и файл ID
     content_type = message.content_type
     file_id = message[content_type].file_id
-    # Используем match case для отправки обратно того же типа контента
-    match content_type:
-        case "animation":
-            await message.reply_animation(file_id)
-        case "photo":
-            await message.reply_photo(file_id)
-        case "video":
-            await message.reply_video(file_id)
-        case "document":
-            await message.reply_document(file_id)
-        case "sticker":
-            await message.reply_sticker(file_id)
-        case _:
-            await message.reply("Неизвестный тип контента")
+    # Используем if content_type  для отправки обратно того же типа контента
+    if content_type == "animation":
+        await message.reply_animation(file_id)
+    elif content_type == "photo":
+        await message.reply_photo(file_id)
+    elif content_type ==  "video":
+        await message.reply_video(file_id)
+    elif content_type ==  "document":
+        await message.reply_document(file_id)
+    elif content_type ==  "sticker":
+        await message.reply_sticker(file_id)
+    else:
+        await message.reply("Неизвестный тип контента")
 
-            
+
 if __name__ == "__main__":
     executor.start_polling(dp)
