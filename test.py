@@ -1,4 +1,2 @@
-import sys
-import locale
-print (sys.getfilesystemencoding ())
-print (locale.getpreferredencoding ())
+import aiogram
+print(aiogram.__version__   )
