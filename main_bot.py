@@ -7,15 +7,18 @@ import re
 from aiogram.types import BotCommand, BotCommandScopeDefault
 from aiogram.dispatcher import filters
 from aiogram import Bot, types
-from aiogram.dispatcher import Dispatcher, FSMContext   
+from aiogram.dispatcher import Dispatcher
 from aiogram.utils import executor
-from aiogram.dispatcher.middlewares import LifetimeControllerMiddleware
-from aiogram.dispatcher.filters import CommandStart, Command
+from aiogram.utils.exceptions import BadRequest
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher.filters.builtin import ChatType
+from aiogram.dispatcher.middlewares import BaseMiddleware
+from aiogram.dispatcher.handler import CancelHandler
+
 
 
 # Импортируем функции из файла с базой данных
-from database import insert_user_db, delete_user_db, update_user_db, get_nickname_db
+from database import insert_user_db, delete_user_db, update_user_db, get_nickname_db, is_banned, ban_user, unban_user
 
 
 TOKEN = "6273983990:AAGNUQpjEen2GKcfJYtcHygvolZkzxg8Fpk"
@@ -34,6 +37,102 @@ async def set_default_commands(bot: Bot):
     ]
     return await bot.set_my_commands(commands=commands, scope=BotCommandScopeDefault())
                                      
+
+# Класс миддлвари для проверки черного списка
+class BlacklistMiddleware(BaseMiddleware):
+    # Метод для обработки входящих сообщений
+    async def on_process_message(self, message: types.Message, data: dict):
+        # Проверяем, находится ли пользователь в черном списке
+        if await is_banned(message.from_user.id):
+            # Если да, то прерываем цепочку обработки сообщения
+            try:
+                raise CancelHandler()
+            except Exception:
+                pass
+        # Иначе продолжаем обработку сообщения как обычно
+
+# Регистрируем миддлварь в диспетчере
+dp.middleware.setup(BlacklistMiddleware())
+
+
+# Функция для проверки, является ли пользователь администратором группы
+async def is_admin(chat_id, user_id):
+    member = await bot.get_chat_member(chat_id, user_id)
+    return member.is_chat_admin()
+
+# Хэндлер для команды /ban
+@dp.message_handler(commands=["ban"])
+async def ban_command(message: types.Message):
+    # Проверяем, является ли отправитель команды администратором группы
+    if await is_admin(message.chat.id, message.from_user.id):
+        # Проверяем, есть ли упомянутый пользователь в сообщении
+        if message.reply_to_message:
+            # Получаем user_id упомянутого пользователя
+            user_id = message.reply_to_message.from_user.id
+            # Проверяем, не является ли он администратором группы
+            if not await is_admin(message.chat.id, user_id):
+                # Добавляем пользователя в черный список
+                await ban_user(user_id)
+                # Пытаемся забанить пользователя в группе навсегда
+                try:
+                    # await bot.kick_chat_member(message.chat.id, user_id)
+                    await message.reply(f"Пользователь {user_id} забанен.")
+                except BadRequest:
+                    await message.reply(f"Не удалось забанить пользователя {user_id} в группе. Возможно, он уже покинул ее.")
+            else:
+                await message.reply("Нельзя забанить администратора группы.")
+        else:
+            await message.reply("Вы должны упомянуть пользователя, которого хотите забанить.")
+    else:
+        await message.reply("Вы не являетесь администратором группы.")
+
+
+# Хэндлер для команды /unban
+@dp.message_handler(commands=["unban"], chat_type=[ChatType.GROUP, ChatType.SUPERGROUP])
+async def unban_command(message: types.Message):
+    # Проверяем, является ли отправитель команды администратором группы
+    if await is_admin(message.chat.id, message.from_user.id):
+        # Проверяем, есть ли упомянутый пользователь в сообщении
+        if message.reply_to_message:
+            # Получаем user_id упомянутого пользователя
+            user_id = message.reply_to_message.from_user.id
+            # Проверяем, находится ли он в черном списке
+            if await is_banned(user_id):
+                # Удаляем пользователя из черного списка
+                await unban_user(user_id)
+                # Пытаемся разбанить пользователя в группе
+                try:
+                    # await bot.unban_chat_member(message.chat.id, user_id)
+                    await message.reply(f"Пользователь {user_id} разбанен.")
+                except BadRequest:
+                    await message.reply(f"Не удалось разбанить пользователя {user_id} в группе. Возможно, он уже покинул ее.")
+            else:
+                await message.reply("Этот пользователь не находится в черном списке.")
+        else:
+            await message.reply("Вы должны упомянуть пользователя, которого хотите разбанить.")
+    else:
+        await message.reply("Вы не являетесь администратором группы.")
+
+# Хэндлер для команды /checkban
+@dp.message_handler(commands=["checkban"], chat_type=[ChatType.GROUP, ChatType.SUPERGROUP])
+async def checkban_command(message: types.Message):
+    # Проверяем, является ли отправитель команды администратором группы
+    if await is_admin(message.chat.id, message.from_user.id):
+        # Проверяем, есть ли упомянутый пользователь в сообщении
+        if message.reply_to_message:
+            # Получаем user_id упомянутого пользователя
+            user_id = message.reply_to_message.from_user.id
+            # Проверяем, находится ли он в черном списке
+            if await is_banned(user_id):
+                await message.reply(f"Пользователь {user_id} находится в черном списке.")
+            else:
+                await message.reply(f"Пользователь {user_id} не находится в черном списке.")
+        else:
+            await message.reply("Вы должны упомянуть пользователя, статус которого хотите проверить.")
+    else:
+        await message.reply("Вы не являетесь администратором группы.")
+
+
 
 @dp.message_handler(commands=["start"])
 async def send_welcome(msg: types.Message):

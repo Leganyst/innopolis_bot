@@ -76,3 +76,40 @@ def get_nickname_db(user_id):
     else:
         return None
     
+# Функция для проверки, находится ли пользователь в черном списке
+async def is_banned(user_id):
+    # Формируем SQL-запрос для получения значения столбца blacklist по user_id
+    sql = f"SELECT blacklist FROM users WHERE user_id = {user_id};"
+    # Выполняем запрос и получаем результат
+    cur.execute(sql)
+    result = cur.fetchone()
+    # Если результат не пустой, возвращаем значение столбца blacklist (True или False)
+    if result:
+        return result[0]
+    # Иначе возвращаем False, так как пользователь не находится в базе данных
+    else:
+        return False
+
+# Функция для добавления пользователя в черный список
+async def ban_user(user_id):
+    # Проверяем, есть ли пользователь в базе данных
+    if await is_banned(user_id) is False:
+        # Если нет, то добавляем его в таблицу users с значением столбца blacklist в True
+        sql = f"INSERT INTO users (user_id, blacklist) VALUES ({user_id}, True);"
+        cur.execute(sql)
+        conn.commit()
+    else:
+        # Если есть, то обновляем значение столбца blacklist в True
+        sql = f"UPDATE users SET blacklist = True WHERE user_id = {user_id};"
+        cur.execute(sql)
+        conn.commit()
+
+
+# Функция для удаления пользователя из черного списка
+async def unban_user(user_id):
+    # Проверяем, есть ли пользователь в базе данных
+    if await is_banned(user_id) is True:
+        # Если есть, то обновляем значение столбца blacklist в False
+        sql = f"UPDATE users SET blacklist = False WHERE user_id = {user_id};"
+        cur.execute(sql)
+        conn.commit()
