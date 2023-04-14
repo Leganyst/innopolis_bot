@@ -1,5 +1,8 @@
 /innopolis_bot
 /__pycache__
 /.idea
+/informatic
 users_telegram.db
 test.py
+config.py
+database.py
