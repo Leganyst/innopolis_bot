@@ -2,6 +2,7 @@
 
 from config import TOKEN
 
+from aiogram.dispatcher import FSMContext
 from aiogram.types import BotCommand, BotCommandScopeDefault
 from aiogram.dispatcher import filters
 from aiogram import Bot, types
@@ -12,6 +13,7 @@ from aiogram.dispatcher import Dispatcher
 from aiogram.dispatcher.filters.builtin import ChatType
 from aiogram.dispatcher.middlewares import BaseMiddleware
 from aiogram.dispatcher.handler import CancelHandler
+from aiogram.dispatcher.filters.state import State, StatesGroup
 
 # Импортируем функции из файла с базой данных
 import sqlite3
@@ -22,6 +24,14 @@ conn = sqlite3.connect("users_telegram.db")
 
 # Создаем курсор для выполнения SQL-запросов
 cur = conn.cursor()
+
+
+# ############################################################################################################################################
+# ############################################################################################################################################
+# БАЗА ДАННЫХ БАЗА ДАННЫХ БАЗА ДАННЫХ БАЗА ДАННЫХ БАЗА ДАННЫХ БАЗА ДАННЫХ БАЗА ДАННЫХ БАЗА ДАННЫХ БАЗА ДАННЫХ БАЗА ДАННЫХ БАЗА ДАННЫХ БАЗА
+# ############################################################################################################################################
+# ############################################################################################################################################
+
 
 # Создаем таблицу users, если она еще не существует
 cur.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, nickname TEXT, blacklist bool)")
@@ -130,12 +140,29 @@ async def unban_user(user_id):
         cur.execute(sql)
         conn.commit()
 
+# ############################################################################################################################################
+# ############################################################################################################################################
+#
+# ############################################################################################################################################
+# ############################################################################################################################################
 
+
+
+# ############################################################################################################################################
+# ############################################################################################################################################
+# БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ БОТ
+# ############################################################################################################################################
+# ############################################################################################################################################
+
+
+'''Инициализация бота''' 
 bot = Bot(token=TOKEN, parse_mode=types.ParseMode.HTML)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
 
+'''Меню команд по одному из уроков.'''
+# Меню команд 
 async def set_default_commands(bot: Bot):
     commands = [
         BotCommand('start', 'Команда запуска бота'),
@@ -148,6 +175,7 @@ async def set_default_commands(bot: Bot):
     return await bot.set_my_commands(commands=commands, scope=BotCommandScopeDefault())
                                      
 
+"""Создаём миддлвари для черного списка. Каждый обработчик после будет проверять, находится ли человек в ЧС бота или нет."""
 # Класс миддлвари для проверки черного списка
 class BlacklistMiddleware(BaseMiddleware):
     # Метод для обработки входящих сообщений
@@ -158,16 +186,19 @@ class BlacklistMiddleware(BaseMiddleware):
             raise CancelHandler()
         # Иначе продолжаем обработку сообщения как обычно
 
-
 # Регистрируем миддлварь в диспетчере
 dp.middleware.setup(BlacklistMiddleware())
 
-
+"""Служебная функция для чатов"""
 # Функция для проверки, является ли пользователь администратором группы
 async def is_admin(chat_id, user_id):
     member = await bot.get_chat_member(chat_id, user_id)
     return member.is_chat_admin()
 
+
+# ---------------------------
+'''Чёрный список и команды'''
+# ---------------------------
 
 # Хэндлер для команды /ban
 @dp.message_handler(commands=["ban"], chat_type=[ChatType.GROUP, ChatType.SUPERGROUP])
@@ -241,7 +272,14 @@ async def checkban_command(message: types.Message):
     else:
         await message.reply("Вы не являетесь администратором группы.")
 
+# --------------------------------
+"""Конец блока с чёрным списком"""
+# --------------------------------
 
+
+# --------------------------------
+"""Рядовые команды"""
+# --------------------------------
 @dp.message_handler(commands=['about'])
 async def send_about(message: types.Message):
 
@@ -254,7 +292,7 @@ async def send_about(message: types.Message):
 
 @dp.message_handler(commands=["start"])
 async def send_welcome(msg: types.Message):
-    await msg.reply(f"Я бот. Меня написал Марк Клавишин. Я работаю круглосуточно, так как установлен на VDS хостинге.")
+    await msg.reply(f"Я бот. Меня написал Марк Клавишин. Подробнее - /about ")
     await set_default_commands(bot)
 
 @dp.message_handler(commands=["write"])
@@ -306,7 +344,15 @@ async def get_user_data(message: types.Message):
     # Если никнейм None, отправляем сообщение об ошибке
     else:
         await message.reply("Вы не зарегистрированы в базе данных")
+# -----------------------------
+'Конец блока рядовых команд'
+# -----------------------------
 
+
+
+# ----------------------------
+"Блок команд с регулярными выражениями. Выводят чуть более детальную справку по каждой команде."
+# ----------------------------
 
 # Создаем фильтр с регулярным выражением для команды help
 help_filter = filters.RegexpCommandsFilter(regexp_commands=['help ( [a-z]*)'])
@@ -340,33 +386,74 @@ async def update_command(message: types.Message):
 async def get_command(message: types.Message):
     await message.answer('/get - получить информацию о себе из базы данных.')
 
+# -----------------------------------
+"Конец блока с регулярными выражениями"
+# -----------------------------------
+
+
+
+# -----------------------------------
+"Клавиатура!!!"
+# -----------------------------------
+
 # Создаем клавиатуру с двумя кнопками "ДА" и "НЕТ"
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("ДА", "НЕТ")
 
-# Создаем клавиатуру для скрытия клавиатуры
-hide_keyboard = types.ReplyKeyboardRemove()
+# создаем класс состояний
+class Form(StatesGroup):
+    waiting_for_confirmation = State()
+    waiting_for_location = State()
+
 
 # Регистрируем обработчик команды /keyboard
 @dp.message_handler(commands=["keyboard"])
-async def send_keyboard(message: types.Message):
-    # Отправляем сообщение с клавиатурой
+async def send_keyboard(message: types.Message, state: FSMContext):
+    # Отправляем сообщение с клавиатурой и переходим в состояние waiting_for_confirmation
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add(types.KeyboardButton(text="ДА"), types.KeyboardButton(text="НЕТ"))
     await message.answer("Вы хотите продолжить?", reply_markup=keyboard)
+    await Form.waiting_for_confirmation.set()
 
 # Регистрируем обработчик нажатия кнопок
-@dp.message_handler()
-async def handle_buttons(message: types.Message):
+@dp.message_handler(state=Form.waiting_for_confirmation)
+async def handle_buttons(message: types.Message, state: FSMContext):
     # Проверяем текст сообщения
     if message.text == "ДА":
-        # Отправляем сообщение "ДА" и скрываем клавиатуру
-        await message.reply("ДА", reply_markup=hide_keyboard)
+        # Отправляем сообщение "ДА" и скрываем клавиатуру, затем переходим в начальное состояние
+        await message.reply("ДА", reply_markup=types.ReplyKeyboardRemove())
+        await state.finish()
     elif message.text == "НЕТ":
-        # Отправляем сообщение "НЕТ" и скрываем клавиатуру
-        await message.reply("НЕТ", reply_markup=hide_keyboard)
+        # Отправляем сообщение "НЕТ" и скрываем клавиатуру, затем переходим в начальное состояние
+        await message.reply("НЕТ", reply_markup=types.ReplyKeyboardRemove())
+        await state.finish()
     else:
         # Отправляем сообщение "Не понимаю"
         await message.reply("Не понимаю")
 
+
+# Начало блока с геолокацией
+"Клавиша для отправки геолокации и реакция на отправку геолокации"
+# функция, которая отправляет геолокацию боту
+@dp.message_handler(commands=['location'])
+async def send_location(message: types.Message, state: FSMContext):
+    # создаем объект клавиатуры
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    # добавляем кнопку для отправки геолокации
+    button = types.KeyboardButton(text="Отправить геолокацию", request_location=True)
+    keyboard.add(button)
+    # отправляем сообщение с клавиатурой
+    await message.answer("Нажмите на кнопку, чтобы отправить геолокацию", reply_markup=keyboard)
+    await Form.waiting_for_location.set()
+
+# Регистрируем обработчик при состоянии ожидания локации
+@dp.message_handler(content_types=types.ContentType.LOCATION, state=Form.waiting_for_location)
+async def answer_location(message: types.Message, state: FSMContext):
+    # Отвечаем и удаляем клавиатуру, сбрасываем состояние.
+    await message.answer('Геолокация принята. Спасибо!', reply_markup=types.ReplyKeyboardRemove())
+    await state.finish()
+
+# Конец блока с геолокацией
 
 
 if __name__ == "__main__":
