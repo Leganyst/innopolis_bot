@@ -15,7 +15,7 @@ from aiogram.dispatcher.middlewares import BaseMiddleware
 from aiogram.dispatcher.handler import CancelHandler
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
-# Импортируем функции из файла с базой данных
+import random
 import sqlite3
 
 
@@ -170,7 +170,10 @@ async def set_default_commands(bot: Bot):
         BotCommand('update', 'Обновление информации о себе в базе данных'),
         BotCommand('write', 'Записать информацию о себе в базу данных'),
         BotCommand('delete', 'Удалить информацию о себе из базы данных'),
-        BotCommand('about', 'Информация о боте')
+        BotCommand('about', 'Информация о боте'),
+        BotCommand('films', 'Список любимых фильмов/сериалов/аниме автора'),
+        BotCommand('location', "Отправить геолокацию"),
+        BotCommand('keyboard', 'Вызвать клавиатуру с двумя кнопками :)')
     ]
     return await bot.set_my_commands(commands=commands, scope=BotCommandScopeDefault())
                                      
@@ -454,6 +457,93 @@ async def answer_location(message: types.Message, state: FSMContext):
     await state.finish()
 
 # Конец блока с геолокацией
+
+
+# Инлайн кнопка для фильма
+# Обрабатываем команду /inline
+@dp.message_handler(commands=["films"])
+async def inline(message: types.Message):
+    # Создаем объект инлайн-клавиатуры с одной кнопкой
+    keyboard = types.InlineKeyboardMarkup()
+    # Добавляем кнопку с текстом "Перейти на сайт" и url-адресом
+    keyboard.add(types.InlineKeyboardButton(text="Бойцовский клуб", url="https://www.kinopoisk.ru/film/361/?utm_referrer=yandex.ru"))
+    keyboard.add(types.InlineKeyboardButton(text="Initial D", url="https://www.kinopoisk.ru/series/230874/"))
+    keyboard.add(types.InlineKeyboardButton(text="Мир, дружба, жвачка", url="https://www.kinopoisk.ru/series/1306638/"))
+    keyboard.add(types.InlineKeyboardButton(text="Blade Runner 2049", url="https://www.kinopoisk.ru/film/589290/"))
+    keyboard.add(types.InlineKeyboardButton(text="Drive", url="https://www.kinopoisk.ru/film/276598/"))
+    keyboard.add(types.InlineKeyboardButton(text="На игле", url="https://www.kinopoisk.ru/film/515/"))
+    # Отправляем сообщение с клавиатурой в ответ на команду
+    await message.reply("Нажми на кнопку, чтобы узнать подробнее о моем любимом фильме/сериале/аниме", reply_markup=keyboard)
+
+
+
+# -----------------------------------------------
+"Попытка реализовать мини-игру 'Орёл-решка' на инлайн кнопках"
+# -----------------------------------------------
+
+# Создаем обработчик команды /game
+
+# @dp.callback_query_handler(lambda c: c.data == 'yes')
+@dp.message_handler(commands=['game'])
+async def game_handler(message: types.Message):
+    # Создаем объект клавиатуры с двумя кнопками: Орёл и Решка
+    keyboard = types.InlineKeyboardMarkup()
+    button_eagle = types.InlineKeyboardButton(text='Орёл', callback_data='eagle')
+    button_tails = types.InlineKeyboardButton(text='Решка', callback_data='tails')
+    keyboard.row(button_eagle, button_tails)
+    # Отправляем сообщение с клавиатурой пользователю
+    await message.answer('Выбери: Орёл или Решка', reply_markup=keyboard)
+
+# Создаем обработчик нажатий на кнопки клавиатуры
+@dp.callback_query_handler(lambda c: c.data in ['eagle', 'tails'])
+async def process_callback_game(callback_query: types.CallbackQuery):
+    # Получаем выбор пользователя из данных кнопки
+    user_choice = callback_query.data
+    # Генерируем случайное число 0 или 1
+    coin_flip = random.randint(0, 1)
+    # Присваиваем результату подбрасывания монеты строку Орёл или Решка в зависимости от случайного числа
+    if coin_flip == 0:
+        coin_result = 'Орёл'
+    else:
+        coin_result = 'Решка'
+    # Проверяем, совпал ли выбор пользователя с результатом подбрасывания монеты
+    if user_choice == 'eagle' and coin_result == 'Орёл' or user_choice == 'tails' and coin_result == 'Решка':
+        # Если да, то отправляем сообщение о победе и предлагаем сыграть ещё раз
+        text = 'Ты победил. Хочешь ещё?'
+    else:
+        # Если нет, то отправляем сообщение о проигрыше и не предлагаем сыграть ещё раз
+        text = 'Ты проиграл. Хочешь ещё?'
+
+    # Редактируем сообщение с подбрасыванием монеты на новое сообщение с результатом и новой клавиатурой (если есть)
+    # Создаем объект клавиатуры с двумя кнопками: да и нет
+    keyboard = types.InlineKeyboardMarkup()
+    button_yes = types.InlineKeyboardButton(text='да', callback_data='yes')
+    button_no = types.InlineKeyboardButton(text='нет', callback_data='no')
+    keyboard.row(button_yes, button_no)
+    await bot.edit_message_text(text=text, chat_id=callback_query.message.chat.id,
+                                 message_id=callback_query.message.message_id, reply_markup=keyboard)
+
+# Создаем обработчик нажатия на кнопку да
+@dp.callback_query_handler(lambda c: c.data == 'yes')
+async def process_callback_game_again(callback_query: types.CallbackQuery):
+    # Создаем объект клавиатуры с двумя кнопками: Орёл и Решка
+    keyboard = types.InlineKeyboardMarkup()
+    button_eagle = types.InlineKeyboardButton(text='Орёл', callback_data='eagle')
+    button_tails = types.InlineKeyboardButton(text='Решка', callback_data='tails')
+    keyboard.row(button_eagle, button_tails)
+    # Редактируем сообщение с результатом на новое сообщение с подбрасыванием монеты и новой клавиатурой
+    await bot.edit_message_text(text='Выбери: Орёл или Решка', chat_id=callback_query.message.chat.id,
+                                 message_id=callback_query.message.message_id, reply_markup=keyboard)
+
+# Создаём обработчик нажатия на кноику нет
+@dp.callback_query_handler(lambda c: c.data == 'no')
+async def cancel_game(callback_query: types.CallbackQuery):
+    # нулевая клавиатура
+    keyboard = None
+    # редактируем сообщение
+    await bot.edit_message_text(text="Ну как хочешь.", chat_id=callback_query.message.chat.id,
+                                message_id=callback_query.message.message_id, reply_markup=keyboard)
+
 
 
 if __name__ == "__main__":
