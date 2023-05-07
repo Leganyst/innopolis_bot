@@ -3,11 +3,11 @@
 from config import TOKEN
 
 from aiogram.dispatcher import FSMContext
-from aiogram.types import BotCommand, BotCommandScopeDefault
+from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeChatAdministrators
 from aiogram.dispatcher import filters
 from aiogram import Bot, types
 from aiogram.utils import executor
-from aiogram.utils.exceptions import BadRequest
+from aiogram.utils.exceptions import BadRequest, ChatAdminRequired
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import Dispatcher
 from aiogram.dispatcher.filters.builtin import ChatType
@@ -15,6 +15,7 @@ from aiogram.dispatcher.middlewares import BaseMiddleware
 from aiogram.dispatcher.handler import CancelHandler
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
+import requests
 import random
 import sqlite3
 
@@ -35,6 +36,14 @@ cur = conn.cursor()
 
 # Создаем таблицу users, если она еще не существует
 cur.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, nickname TEXT, blacklist bool)")
+# Создаём таблицу user_genres, если она ещё не существует
+cur.execute('''
+CREATE TABLE IF NOT EXISTS user_genres (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER,
+    genre TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);''')
 
 # Функция проверки нахождения юзера в бд
 def check_user_in_db(user_id):
@@ -80,7 +89,8 @@ def update_user_db(user_id, new_nickname):
     cur.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
     user = cur.fetchone()
     if user is not None:
-        # Если есть, то обновляем его никнейм в таблице
+        # Если есть, то обновляем его никнейм в 
+        # таблице
         cur.execute("UPDATE users SET nickname = ? WHERE user_id = ?", (new_nickname, user_id))
         conn.commit()
         print(f"Пользователь {user[1]} обновлен на {new_nickname}.")
@@ -140,6 +150,25 @@ async def unban_user(user_id):
         cur.execute(sql)
         conn.commit()
 
+
+# Записываем жанр пользователя
+def add_genre(user_id, genre):
+    cur.execute("INSERT INTO user_genres (user_id, genre) VALUES (?, ?)", (user_id, genre))
+    conn.commit()
+
+
+# Получаем жанры для пользователя
+def get_genres(user_id):
+    cur.execute("SELECT genre FROM user_genres WHERE user_id = ?", (user_id,))
+    return [row[0] for row in cur.fetchall()]
+    
+
+# Удаляем жанры пользователя из бд
+def delete_genres(user_id):
+    cur.execute("DELETE FROM user_genres WHERE user_id = ?", (user_id,))
+    conn.commit()
+
+
 # ############################################################################################################################################
 # ############################################################################################################################################
 #
@@ -163,6 +192,14 @@ dp = Dispatcher(bot, storage=storage)
 
 '''Меню команд по одному из уроков.'''
 # Меню команд 
+async def set_admin_commands(bot: Bot):
+    admin_commands = [
+        BotCommand(command="/kick", description="Исключить пользователя из чата")
+    ]
+
+    # Устанавливаем команды для админов в каждом чате, где бот работает
+    return await bot.set_my_commands(admin_commands)
+
 async def set_default_commands(bot: Bot):
     commands = [
         BotCommand('start', 'Команда запуска бота'),
@@ -173,10 +210,17 @@ async def set_default_commands(bot: Bot):
         BotCommand('about', 'Информация о боте'),
         BotCommand('films', 'Список любимых фильмов/сериалов/аниме автора'),
         BotCommand('location', "Отправить геолокацию"),
-        BotCommand('keyboard', 'Вызвать клавиатуру с двумя кнопками :)')
+        BotCommand('keyboard', 'Вызвать клавиатуру с двумя кнопками :)'),
+        BotCommand('genres', 'Добавить свои любимые жанры'),
+        BotCommand('get_genres', 'Получить список своих жанров'),
+        BotCommand('delete_genres', 'Удалить список жанров чтобы составить новый'),
+        BotCommand('rub_yuan', 'Курс юаня к рублю и рубля к юаню'),
+        
+        BotCommand('kick', 'Удалить пользователя из чата.')
     ]
+
     return await bot.set_my_commands(commands=commands, scope=BotCommandScopeDefault())
-                                     
+
 
 """Создаём миддлвари для черного списка. Каждый обработчик после будет проверять, находится ли человек в ЧС бота или нет."""
 # Класс миддлвари для проверки черного списка
@@ -298,6 +342,12 @@ async def send_welcome(msg: types.Message):
     await msg.reply(f"Я бот. Меня написал Марк Клавишин. Подробнее - /about ")
     await set_default_commands(bot)
 
+    user = await bot.get_chat_member(msg.chat.id, msg.from_user.id)
+    if user.is_chat_admin():
+        # Устанавливаем команды для админов в текущем чате
+        await set_admin_commands(bot)
+
+
 @dp.message_handler(commands=["write"])
 async def record_user(msg: types.Message):
     # Получаем id и никнейм пользователя из сообщения
@@ -417,6 +467,7 @@ async def send_keyboard(message: types.Message, state: FSMContext):
     keyboard.add(types.KeyboardButton(text="ДА"), types.KeyboardButton(text="НЕТ"))
     await message.answer("Вы хотите продолжить?", reply_markup=keyboard)
     await Form.waiting_for_confirmation.set()
+
 
 # Регистрируем обработчик нажатия кнопок
 @dp.message_handler(state=Form.waiting_for_confirmation)
@@ -545,6 +596,180 @@ async def cancel_game(callback_query: types.CallbackQuery):
                                 message_id=callback_query.message.message_id, reply_markup=keyboard)
 
 
+# 
+"Сохраняем опрос по жанрам фильмов"
+# 
+# Создаем класс для хранения состояний
+class GenresState(StatesGroup):
+    genre = State() # Состояние для ввода жанра
+    wait_answer = State()
+    next_continue = State()
+
+
+# Обрабатываем команду /genres
+@dp.message_handler(commands="genres")
+async def cmd_genres(message: types.Message):
+    # Устанавливаем состояние GenresState.genre
+    await GenresState.genre.set()
+    # Отправляем сообщение с вопросом о жанре
+    await message.reply("Введите один жанр в кинематографе, который вам нравится:")
+
+
+# Обрабатываем ответ пользователя в состоянии Form.genre
+@dp.message_handler(state=GenresState.genre)
+async def process_genre(message: types.Message, state: FSMContext):
+    # Вызываем специальную функцию для сохранения жанра
+    add_genre(message.from_user.id, message.text)
+
+    # Создаем инлайн клавиатуру с двумя кнопками
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(
+        types.InlineKeyboardButton(text="Да", callback_data="yes"),
+        types.InlineKeyboardButton(text="Нет", callback_data="no")
+    )
+    await GenresState.wait_answer.set()
+    # Отправляем сообщение с вопросом и клавиатурой
+    await message.reply("Продолжим?", reply_markup=keyboard)
+
+
+@dp.callback_query_handler(text="yes", state=GenresState.wait_answer)
+async def process_yes(callback_query: types.CallbackQuery):
+    # Отвечаем на запрос
+    await callback_query.answer()
+    # Редактируем текст сообщения
+    await callback_query.message.edit_text("Введите один жанр из кинематографа, который вам нравится:")
+    # Устанавливаем состояние GenresState.genre
+    await GenresState.genre.set()
+
+
+# Обрабатываем нажатие на кнопку "Нет"
+@dp.callback_query_handler(text="no", state=GenresState.wait_answer)
+async def process_no(callback_query: types.CallbackQuery):
+    # Отвечаем на запрос
+    await callback_query.answer()
+    # Вызываем специальную функцию, которая получает из базы данных все записанные жанры
+    genres = get_genres(user_id=callback_query.from_user.id)
+    # Создаем текст сообщения с перечислением жанров
+    text = "Вы выбрали следующие жанры:\n"
+    for genre in genres:
+        text += f"- {genre}\n"
+    # Создаем инлайн клавиатуру с двумя кнопками
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(
+        types.InlineKeyboardButton(text="Продолжить", callback_data="continue"),
+        types.InlineKeyboardButton(text="Удалить", callback_data="delete")
+    )
+    # Редактируем сообщение с новым текстом и клавиатурой
+    await callback_query.message.edit_text(text, reply_markup=keyboard)
+    await GenresState.next_continue.set()
+
+
+# Обрабатываем нажатие на кнопку "Продолжить"
+@dp.callback_query_handler(text="continue", state=GenresState.next_continue)
+async def process_continue(callback_query: types.CallbackQuery, state: FSMContext):
+    # Отвечаем на запрос
+    await callback_query.answer()
+    # Редактируем сообщение с новым текстом и без клавиатуры
+    await callback_query.message.edit_text("Вы закончили заполнять свои жанры. Спасибо!", reply_markup=None)
+    await state.finish()
+
+
+# Обрабатываем нажатие на кнопку "Удалить"
+@dp.callback_query_handler(text="delete", state=GenresState.next_continue)
+async def process_delete(callback_query: types.CallbackQuery, state: FSMContext):
+    # Отвечаем на запрос
+    await callback_query.answer()
+    # Вызываем специальную функцию для удаления жанров из базы данных
+    delete_genres(user_id=callback_query.from_user.id)
+    # Отправляем сообщение, что режим редактирования закрыт
+    await callback_query.message.reply("Вы удалили все свои жанры. Для их добавления используйте команду /genres.")
+    await state.finish()
+
+
+# Обрабатываем команду /delete_genres
+@dp.message_handler(commands=["delete_genres"])
+async def delete_genres_handler(message: types.Message):
+    # Вызываем специальную функцию для удаления жанров пользователя
+    delete_genres(message.from_user.id)
+    # Отвечаем пользователю, что его список жанров очищен
+    await message.reply("Ваш список жанров очищен.")
+
+# Обрабатываем команду /get_genres
+@dp.message_handler(commands=["get_genres"])
+async def get_genres_handler(message: types.Message):
+    # Вызываем специальную функцию для получения жанров пользователя
+    genres = get_genres(message.from_user.id)
+    # Проверяем, есть ли жанры в списке
+    if genres:
+        # Формируем текст с жанрами
+        text = "Ваши выбранные жанры:\n"
+        for genre in genres:
+            text += f"- {genre}\n"
+    else:
+        # Или сообщаем, что список пуст
+        text = "Вы не выбрали ни одного жанра."
+    # Отвечаем пользователю с текстом
+    await message.reply(text)
+
+
+# --------------------------------------
+"Курс валюты юаня к рублю и рубля к юаню"
+# --------------------------------------
+# Определяем функциюдля получения курса
+def get_currency_rates():
+    # Получаем данные по курсам валют с сайта ЦБ РФ
+    response = requests.get('https://www.cbr-xml-daily.ru/daily_json.js')
+    data = response.json()['Valute']
+    
+    # Получаем информацию о курсе рубля к юаню и юаня к рублю
+    rub_to_cny = data['CNY']['Value'] / data['CNY']['Nominal']
+    cny_to_rub = data['CNY']['Nominal'] / data['CNY']['Value']
+    rub_to_cny = round(rub_to_cny, 2)
+    cny_to_rub = round(cny_to_rub, 2)
+    
+    # Формируем отформатированный текст с полученными данными
+    text = f'1 CNY = {rub_to_cny} RUB\n1 RUB = {cny_to_rub} CNY'
+    
+    return text
+
+
+# --------------------------------------
+"БАААН"
+# --------------------------------------
+# Обрабатываем команду /kick
+# Создаем фильтр для команды /kick
+class IsAdmin(filters.Command):
+    def __init__(self):
+        super().__init__('kick')
+
+
+# Обработчик на команду chy_rub
+@dp.message_handler(commands=['rub_yuan'])
+async def course_money(message: types.Message):
+    text = get_currency_rates()
+    await message.answer(text)
+
+    async def check(self, message: types.Message):
+        # Проверяем, что сообщение является ответом на другое сообщение
+        if not message.reply_to_message:
+            return False
+        # Проверяем, что чат является групповым или супергрупповым
+        if not message.chat.type in (types.ChatType.GROUP, types.ChatType.SUPERGROUP):
+            return False
+        # Проверяем, что отправитель сообщения является администратором чата
+        user = await bot.get_chat_member(message.chat.id, message.from_user.id)
+        return user.is_chat_admin()
+
+# Регистрируем обработчик для команды /kick с фильтром IsAdmin
+@dp.message_handler(IsAdmin())
+async def kick_user(message: types.Message):
+    # Исключаем пользователя из чата по его идентификатору
+    try:
+        await bot.kick_chat_member(message.chat.id, message.reply_to_message.from_user.id)
+        # Отправляем сообщение об успешном исключении
+        await message.answer(f"Пользователь {message.reply_to_message.from_user.full_name} исключен из чата.")
+    except AttributeError:
+        await message.answer('Для удаления пользователя из чата нужно ответить на его сообщение.')
 
 if __name__ == "__main__":
     executor.start_polling(dp)
